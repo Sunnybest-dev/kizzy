@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="3">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetGuard Dashboard</title>
+
+    <style>
+        body {
+    font-family: Arial, sans-serif;
+    background: #020617;
+    color: #e2e8f0;
+    height: 9px;
+    margin: 0;
+    padding: 0;
+}
+
+/* 🔥 TITLE */
+h1 {
+    position: sticky;
+    top: 0;
+    background: #020617;
+    z-index: 1000;
+    margin: 0;
+    padding: 15px;
+    text-align: center;
+    color: #38bdf8;
+    border-bottom: 1px solid #1e293b;
+}
+
+/* 🔥 STATS (FIXED TOP) */
+.stats {
+    position: sticky;
+    top: 60px;
+    /* z-index: 999; */
+    background: #020617;
+    padding: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    border-bottom: 1px solid #1e293b;
+}
+
+/* STAT CARDS */
+.card {
+    background: #0f172a;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    width: 150px;
+    height: auto;
+    position: static;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    transition: transform 0.2s ease;
+}
+
+.card:hover {
+    transform: scale(1.05);
+}
+
+/* 🔥 MAIN LAYOUT */
+.main {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+}
+
+/* 🔥 TABLE CONTAINER (SCROLLABLE) */
+.table-container {
+    width: 60%;
+    max-height: 450px;
+    overflow-y: auto;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+/* TABLE */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+/* 🔥 STICKY HEADER */
+th {
+    position: sticky;
+    top: 0;
+    background: #1e293b;
+    z-index: 2;
+}
+
+/* CELLS */
+th, td {
+    padding: 12px;
+    border: 1px solid #1e293b;
+    text-align: center;
+}
+
+/* ROW STRIPES */
+tr:nth-child(even) {
+    background: #0f172a;
+}
+
+/* ALERT TEXT */
+.alert {
+    color: #ef4444;
+    font-weight: bold;
+}
+
+/* 🔥 CHART CONTAINER */
+.chart-container {
+    width: 35%;
+    height: 360px;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid #1e293b;
+    text-align: center;
+    background: #0f172a;
+    padding: 80px 20px 0px 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+/* SCROLLBAR (OPTIONAL BUT 🔥 CLEAN) */
+.table-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #020617;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #38bdf8;
+    border-radius: 10px;
+}
+
+.header{
+    position: sticky;
+    top: 0;
+    background: #020617;
+    z-index: 1000;
+}
+
+/* 🔥 RESPONSIVE DESIGN */
+@media (max-width: 900px) {
+    .main {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .table-container,
+    .chart-container {
+        width: 90%;
+    }
+
+    .stats {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+    </style>
+</head>
+
+<body>
+<div class="header">
+    <h1>🛡️ NetGuard SOC Dashboard</h1>
+
+    <div class="stats">
+        <div class="card">
+            <h3>Total Threats</h3>
+            <p>{{ threats|length }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Last Threat</h3>
+            <p>{{ threats[0][2] if threats else "None" }}</p>
+        </div>
+    </div>
+</div>
+    <!-- 🔥 SIDE-BY-SIDE LAYOUT -->
+    <div class="main">
+
+        <!-- LEFT: TABLE -->
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>Threat Type</th>
+                    <th>Source IP</th>
+                </tr>
+
+                {% for threat in threats %}
+                <tr>
+                    <td>{{ threat[0] }}</td>
+                    <td>{{ threat[1] }}</td>
+                    <td class="alert">{{ threat[2] }}</td>
+                    <td>{{ threat[3] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <!-- RIGHT: CHART -->
+        <div class="chart-container">
+            <h3>📊 Threat Distribution</h3>
+            <canvas id="threatChart"></canvas>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const ctx = document.getElementById('threatChart');
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: {{ labels | tojson }},
+            datasets: [{
+                label: 'Threat Count',
+                data: {{ values | tojson }},
+            }]
+        }
+    });
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,7 @@
+from database import insert_threat
+from datetime import datetime
+
+def log_threat(threat_type, ip):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    insert_threat(threat_type, ip, timestamp)
+    print(f"[LOGGED] {threat_type} from {ip} at {timestamp}")
