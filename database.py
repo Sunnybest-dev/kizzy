@@ -1,15 +1,20 @@
-import sqlite3
+import psycopg2
 import os
+from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'threats.db')
+load_dotenv()
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS threats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             timestamp TEXT,
             threat_type TEXT NOT NULL,
             source_ip TEXT NOT NULL
@@ -17,15 +22,34 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    print("✅ Database initialized successfully!")
 
 def insert_threat(threat_type, source_ip, timestamp):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO threats (threat_type, source_ip, timestamp)
-        VALUES (?, ?, ?)
+        VALUES (%s, %s, %s)
     """, (threat_type, source_ip, timestamp))
     conn.commit()
     conn.close()
+
+def get_threats():
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM threats ORDER BY id DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def get_threat_stats():
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT threat_type, COUNT(*) FROM threats GROUP BY threat_type")
+    data = cursor.fetchall()
+    conn.close()
+    labels = [row[0] for row in data]
+    values = [row[1] for row in data]
+    return labels, values
 
 init_db()
