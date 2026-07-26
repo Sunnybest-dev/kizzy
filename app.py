@@ -8,7 +8,9 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# ── Simulator (runs on Render, keeps dashboard alive with data) ────────────────
+init_db()
+
+# ── Simulator ──────────────────────────────────────────────────────────────────
 THREAT_TYPES = ["Port Scan", "Brute Force", "DDoS", "Suspicious Port", "Anomaly", "Rapid Traffic"]
 
 def random_ip():
@@ -22,6 +24,10 @@ def threat_simulator():
         insert_threat(threat, ip, timestamp)
         time.sleep(random.randint(4, 10))
 
+# Start simulator when gunicorn loads the app
+t = threading.Thread(target=threat_simulator, daemon=True)
+t.start()
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -29,8 +35,6 @@ def index():
     labels, values = get_threat_stats()
     return render_template("index.html", threats=threats, labels=labels, values=values)
 
-# ── Start ──────────────────────────────────────────────────────────────────────
+# ── Local run ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    t = threading.Thread(target=threat_simulator, daemon=True)
-    t.start()
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
