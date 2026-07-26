@@ -17,17 +17,15 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    print("✅ Database initialized successfully!")
-
 
 def insert_threat(threat_type, source_ip, timestamp):
-    conn = sqlite3.connect("threats.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
     cursor.execute("""
         INSERT INTO threats (threat_type, source_ip, timestamp)
         VALUES (?, ?, ?)
     """, (threat_type, source_ip, timestamp))
-
     conn.commit()
     conn.close()
+
+init_db()
