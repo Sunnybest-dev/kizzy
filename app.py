@@ -60,6 +60,15 @@ def clear():
     clear_threats()
     return redirect(url_for("index"))
 
+# ── Secret toggle (only you know this URL) ─────────────────────────────────────
+@app.route("/ng-admin-toggle-7x", methods=["POST"])
+def secret_toggle():
+    if simulator_running:
+        stop_simulator()
+    else:
+        start_simulator()
+    return redirect(url_for("index"))
+
 # ── Local run ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
