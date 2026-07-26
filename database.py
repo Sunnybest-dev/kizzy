@@ -52,4 +52,11 @@ def get_threat_stats():
     values = [row[1] for row in data]
     return labels, values
 
+def clear_threats():
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM threats")
+    conn.commit()
+    conn.close()
+
 init_db()

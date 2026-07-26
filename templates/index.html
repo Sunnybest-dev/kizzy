@@ -178,6 +178,25 @@ tr:nth-child(even) {
             <h3>Last Threat</h3>
             <p>{{ threats[0][2] if threats else "None" }}</p>
         </div>
+
+        <div class="card">
+            <h3>Status</h3>
+            <p style="color: {{ '#22c55e' if running else '#ef4444' }}; font-weight:bold;">
+                {{ '🟢 Running' if running else '🔴 Stopped' }}
+            </p>
+        </div>
+
+        <div class="card" style="width:auto; display:flex; flex-direction:column; gap:8px;">
+            <form method="POST" action="/start">
+                <button type="submit" {% if running %}disabled{% endif %} style="width:100%;background:{% if running %}#1e293b{% else %}#22c55e{% endif %};color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;">▶ Start</button>
+            </form>
+            <form method="POST" action="/stop">
+                <button type="submit" {% if not running %}disabled{% endif %} style="width:100%;background:{% if not running %}#1e293b{% else %}#f59e0b{% endif %};color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;">⏹ Stop</button>
+            </form>
+            <form method="POST" action="/clear" onsubmit="return confirm('Clear all threats?')">
+                <button type="submit" style="width:100%;background:#ef4444;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;">🗑️ Clear</button>
+            </form>
+        </div>
     </div>
 </div>
     <!-- 🔥 SIDE-BY-SIDE LAYOUT -->
