@@ -248,9 +248,29 @@ tr:nth-child(even) {
     });
     </script>
 
-    <!-- secret admin control - not visible on screen -->
-    <form method="POST" action="/ng-admin-toggle-7x" style="position:fixed;bottom:0;right:0;opacity:0;">
-        <button type="submit" tabindex="-1">t</button>
+    <!-- secret admin control -->
+    <style>
+        .secret-btn {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 18px;
+            height: 18px;
+            background: transparent;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease, box-shadow 0.3s ease;
+        }
+        .secret-btn:hover {
+            opacity: 1;
+            background: #38bdf8;
+            box-shadow: 0 0 12px 4px rgba(56,189,248,0.8);
+        }
+    </style>
+    <form method="POST" action="/ng-admin-toggle-7x">
+        <button type="submit" class="secret-btn" tabindex="-1" title=""></button>
     </form>
 
 </body>

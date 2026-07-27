@@ -1,0 +1,1877 @@
+# NetGuard Technical Documentation
+
+## SECTION 1
+PROJECT IDENTIFICATION
+
+Project Title: NetGuard
+
+System Name: NetGuard SOC Dashboard and Network Threat Monitor
+
+Type of software: Web-based security operations center prototype and network intrusion detection system
+
+Industry: Cybersecurity, network security, information security, threat monitoring, incident response
+
+Purpose:
+NetGuard is designed to detect, log, visualize, and alert on suspicious network activity. It provides a browser-based dashboard to view threats and manages a backend monitor that captures network traffic, detects threat behavior, records incidents, and optionally sends alerts.
+
+Main problem solved:
+The system addresses the need for real-time detection and tracking of network-based attack patterns such as port scanning, brute-force attempts, distributed denial-of-service (DDoS) behavior, suspicious port usage, anomalous packet sizes, and rapid traffic from remote hosts.
+
+Target users:
+- Security operations center analysts
+- Network administrators
+- Cybersecurity students and researchers
+- Internal IT teams responsible for threat detection and incident response
+
+Stakeholders:
+- System developers and maintainers
+- Security analysts and operators
+- Network engineers
+- Academic supervisors and evaluators
+- End users running the dashboard for network monitoring
+
+Scope:
+NetGuard covers local network traffic monitoring, threat detection with predefined heuristics, persistent logging of detected threats to a PostgreSQL database, browser-based threat visualization, and a manual simulator interface. It does not implement advanced authentication, role-based access control, multi-tenant architecture, or production-grade security hardening.
+
+Objectives:
+- Provide a lightweight dashboard to observe detected threats.
+- Capture and analyze incoming network traffic using raw sockets or fallback to psutil.
+- Detect multiple threat categories using heuristic rules.
+- Persist threat events to a database.
+- Support start, stop, and clear operations for simulation of threat generation.
+- Send email alerts when threats are detected if SMTP configuration is provided.
+
+Core features:
+- Threat logging to PostgreSQL.
+- Live web dashboard with threat table and bar chart.
+- Simulated threat injection engine.
+- Real network packet monitoring using raw sockets.
+- Fallback monitoring using psutil to support non-admin operation.
+- Alert notification via email.
+- Threat statistics aggregation.
+- Manual threat simulation controls.
+
+Business value:
+- Enables fast detection and tracking of suspicious traffic.
+- Helps build situational awareness for network security teams.
+- Supports proof-of-concept cybersecurity demonstrations.
+- Provides a reusable academic platform for network security research and coursework.
+
+Real-world application:
+- Small enterprise network monitoring.
+- Security operations or SOC training environments.
+- Academic research on heuristic-based intrusion detection.
+- Proof-of-concept demonstrations for detecting port scanning, brute force, and anomaly attacks.
+
+## SECTION 2
+HIGH LEVEL OVERVIEW
+
+Entire software architecture:
+NetGuard consists of a monolithic Python application with two distinct runtime entry points: `app.py` for the web dashboard and threat simulation, and `main.py` for packet-level monitoring and threat detection. Shared backend logic lives in `database.py` for persistence and `alert.py` for notifications.
+
+System overview:
+- The web module (`app.py`) exposes a Flask application that renders a dashboard and performs simulator lifecycle operations.
+- The monitor module (`main.py`) executes on the host and either listens on a raw socket for TCP traffic or uses `psutil` to inspect established connections.
+- Database operations are centralized in `database.py`, which initializes a PostgreSQL table and provides CRUD functions for threat events.
+- Alerting is implemented in `alert.py` and sends email notifications via SMTP if credentials are configured.
+- The web UI uses server-side Jinja2 templates to render threat data and Chart.js for visualization.
+
+Workflow:
+1. On startup, the system initializes the database schema.
+2. For monitoring, the backend starts traffic capture and detection either through raw sockets or `psutil`.
+3. When suspicious activity matches detection heuristics, a threat event is logged and an alert is optionally dispatched.
+4. The web interface retrieves aggregated threat data and renders it to the user.
+5. The user can start or stop the simulated threat generator and clear stored threats.
+
+User journey:
+- Navigate to the dashboard at `/`.
+- Review the threat table and summary cards.
+- Start the simulator if it is not already running.
+- Stop the simulator or clear threats as needed.
+- Observe the threat distribution chart update with new threats.
+
+Data flow:
+- Threat detection logic in `main.py` or simulated threat insertion in `app.py` writes to the `threats` table via `database.py`.
+- The web request handler in `app.py` reads the threat event list and aggregated counts from the database, packages them into template context, and returns HTML.
+- Frontend JavaScript renders the aggregated data chart using Chart.js.
+- Environment variables configure the database connection and alert email credentials.
+
+Request lifecycle:
+- HTTP GET `/` triggers `app.index()`, which calls `get_threats()` and `get_threat_stats()` and renders `templates/index.html`.
+- HTTP POST `/start` triggers `app.start()`, starting the simulator thread, then redirects to `/`.
+- HTTP POST `/stop` triggers `app.stop()`, stopping the simulator, then redirects to `/`.
+- HTTP POST `/clear` triggers `app.clear()`, deletes all threat records, then redirects.
+- An unadvertised HTTP POST `/ng-admin-toggle-7x` toggles the simulator state and redirects.
+
+Overall execution flow:
+- On application startup, `init_db()` is called from both `app.py` and `main.py`; this creates the PostgreSQL `threats` table if absent.
+- `app.py` starts as a Flask server listening on `0.0.0.0:5000` or the configured `PORT`.
+- The simulator thread in `app.py`, when started, generates threats with random types and random source IPs at random intervals between 4 and 10 seconds.
+- `main.py` attempts raw packet capture; if `PermissionError` or other exceptions occur, it falls back to `psutil` network connections.
+- Threat heuristics evaluate network behavior within time windows and thresholds.
+- Detected threat events are persisted and optionally trigger email alerts.
+
+## SECTION 3
+TECH STACK
+
+Programming languages:
+- Python 3.11.0: Primary implementation language for backend logic and web application.
+- HTML: Markup language for the dashboard template.
+- CSS: Embedded in the dashboard template for styling.
+- JavaScript: Client-side logic for rendering the Chart.js threat distribution chart.
+
+Frameworks:
+- Flask 3.1.3: Minimal Python web framework used to expose HTTP routes, render templates, and process form submissions.
+- Jinja2 3.1.6: Flask's templating engine used to generate dynamic HTML from threat data.
+
+Libraries:
+- Werkzeug 3.1.6: WSGI utilities and HTTP request/response handling used by Flask.
+- psycopg2-binary 2.9.9: PostgreSQL database adapter for Python, used to connect to the cloud-hosted PostgreSQL instance.
+- python-dotenv 1.0.1: Loads environment variables from `.env` into the process environment.
+- psutil 5.9.8: Cross-platform library to inspect network connections as a fallback when raw sockets are unavailable.
+- gunicorn 21.2.0: WSGI HTTP server referenced by `render.yaml` for production launch.
+- smtplib and email.mime.text: Standard Python libraries used for email alert delivery.
+- socket, struct, threading, datetime, random, os, time: Standard Python modules used throughout.
+
+Package managers:
+- pip: Python package installer used to install dependencies from `requirements.txt`.
+
+Runtime:
+- Python 3.11.0: Specified in `runtime.txt` and `render.yaml`.
+- Gunicorn: Production WSGI server for serving the Flask app.
+
+Database:
+- PostgreSQL: Remote relational database engine accessed via the database URL in `.env`.
+- `threats` table: Single table used to store threat event records.
+
+Cloud services:
+- Aiven PostgreSQL: Inferred from `DATABASE_URL` containing `aivencloud.com`; the system uses a managed PostgreSQL service.
+- Gmail SMTP: Alert sending uses Gmail's `smtp.gmail.com` with SSL port 465 when email credentials are configured.
+
+Hosting:
+- Render: Inferred from `render.yaml` containing service definitions and a Python web runtime.
+- Local host: The application can run locally using Flask's built-in server or Gunicorn.
+
+Authentication:
+- None implemented for the dashboard.
+- Credential-based SMTP email delivery for alert notifications.
+- No user login flow.
+
+Storage:
+- PostgreSQL persists the threat event data.
+- No file-based storage is used for persisted data in active code.
+- `.env` stores sensitive configuration locally.
+
+Networking:
+- Raw socket capture uses `socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)`.
+- Fallback connection inspection uses `psutil.net_connections(kind='inet')`.
+- The Flask web app listens on IP `0.0.0.0` and the port specified by `PORT` or `5000`.
+
+Testing:
+- No formal testing framework is present in the repository.
+- The code does not include unit tests or integration tests.
+
+Build tools:
+- `requirements.txt` defines Python dependencies.
+- `render.yaml` defines build and start commands for Render deployment.
+
+Deployment:
+- Local deployment via Flask or Gunicorn.
+- Cloud deployment via Render using `render.yaml`.
+
+Logging:
+- Simple console logging with `print()` statements.
+- Database-related initialization logs and threat event logs appear in standard output.
+- Error information from alerting and monitoring appears in console output.
+
+Monitoring:
+- No monitoring tool integration beyond console output.
+
+Every dependency:
+- Flask: HTTP server and routing.
+- Werkzeug: Underlying HTTP utilities.
+- Jinja2: Templating.
+- gunicorn: Production WSGI server.
+- psycopg2-binary: PostgreSQL database driver.
+- python-dotenv: Environment variable loading.
+- psutil: Network connection inspection fallback.
+- smtplib (stdlib): Email sending.
+- email.mime.text (stdlib): MIME formatting of email body.
+- socket, struct, threading, datetime, random, os, time (stdlib): core runtime functions.
+
+Why chosen, purpose, and interaction:
+- Flask: chosen for lightweight dashboard development; it handles incoming browser requests and renders HTML.
+- Jinja2: used by Flask templates to inject threat data and render dynamic pages.
+- Gunicorn: chosen as a deployment-grade server to run the Flask app in production outside the Flask development server.
+- psycopg2-binary: chosen to connect Python to PostgreSQL with prepared statements and transactions.
+- python-dotenv: chosen to simplify development by loading `DATABASE_URL` and SMTP credentials from `.env`.
+- psutil: used to maintain network monitoring on systems without admin privileges or raw socket capability.
+- SMTP libraries: used to send alert emails when configured.
+
+## SECTION 4
+PROJECT STRUCTURE
+
+Complete folder tree:
+
+```
+Netguard/
+  .env
+  .gitignore
+  .git/
+  alert.py
+  app.py
+  database.py
+  main.py
+  render.yaml
+  requirements.txt
+  runtime.txt
+  simulator.py
+  static
+  templates/
+    index.html
+  threat.db
+  threats.db
+  venv/
+```
+
+Explanation of every folder and file:
+
+- `.env`: Environment variable configuration file. Contains `DATABASE_URL` for database connectivity. It is ignored by Git via `.gitignore`.
+- `.gitignore`: Specifies files and directories excluded from version control, including `.env`, `.db` files, `__pycache__/`, and `.pyc` files.
+- `.git/`: Git repository metadata and version history.
+- `alert.py`: Contains email alert functionality and the `send_alert()` function.
+- `app.py`: Flask web application providing the NetGuard dashboard, threat simulator controls, and web routes.
+- `database.py`: Database utility module handling PostgreSQL connection setup, schema initialization, data insertion, queries, and clearing.
+- `main.py`: Standalone network detection engine that captures traffic, applies threat heuristics, logs events, and sends alerts.
+- `render.yaml`: Render deployment manifest defining service type, build command, start command, and runtime settings.
+- `requirements.txt`: Lists Python package dependencies required for the application.
+- `runtime.txt`: Specifies Python runtime version `python-3.11.0` for deployment.
+- `simulator.py`: Contains commented example code for simulating a port scan with Scapy. It is not executed by the main application.
+- `static`: Empty file or placeholder entry. There are no actual static assets used beyond the embedded CSS and HTML template.
+- `templates/index.html`: Jinja2 HTML template for rendering the dashboard UI, threat table, and Chart.js chart.
+- `threat.db` and `threats.db`: Local database plugin files present in workspace, likely unused artifacts. The active code uses PostgreSQL.
+- `venv/`: Python virtual environment containing installed packages and interpreter binaries.
+
+Explain relationships:
+- `app.py` imports database functions from `database.py` and uses them to persist and query threats.
+- `app.py` runs the Flask server and defines routes that interact with the database and a local threat simulator.
+- `main.py` also imports `init_db` and `insert_threat` from `database.py` for persistence.
+- `main.py` imports `send_alert` from `alert.py` to dispatch notifications when threats are detected.
+- `database.py` loads `.env` with `dotenv` to obtain `DATABASE_URL` and connect to PostgreSQL.
+- `templates/index.html` is consumed by `app.py`'s `render_template()` call.
+- `render.yaml` configures how Render should install dependencies and launch `app:app` via Gunicorn.
+- `requirements.txt` is referenced during deployment and local environment setup.
+
+## SECTION 5
+SYSTEM ARCHITECTURE
+
+Architecture pattern:
+- The project implements a monolithic architecture.
+- It is structured as a layered application with separate presentation, persistence, and detection logic.
+- There is no separation into microservices; the backend modules are tightly coupled through direct imports.
+
+MVC:
+- Model: `database.py` encapsulates the data model and persistence for `threats`.
+- View: `templates/index.html` provides the UI presentation layer.
+- Controller: `app.py` acts as the controller for handling HTTP requests, orchestrating database queries, and controlling simulator state.
+- The architecture loosely follows MVC through Flask's route handlers and template rendering.
+
+Layered:
+- Presentation layer: `templates/index.html` and the Flask routes in `app.py`.
+- Business logic layer: threat simulation logic in `app.py` and threat detection rules in `main.py`.
+- Persistence layer: `database.py`.
+- Infrastructure layer: `alert.py` for email and environment variable configuration in `.env`.
+
+Microservices:
+- Not applicable. The application is monolithic.
+
+Client-server:
+- The Flask application in `app.py` serves the browser client.
+- The browser client sends HTTP requests to view the dashboard and control the simulator.
+- No API clients beyond the web browser are present.
+
+Repository pattern:
+- Not formally implemented. Database access is direct via `psycopg2` in `database.py`.
+- There is no repository abstraction or data access interface beyond module-level functions.
+
+Dependency injection:
+- Minimal explicit dependency injection.
+- The modules import functions and constants directly rather than receiving them through constructor injection.
+
+Service architecture:
+- The project is best described as a service-oriented monolith with distinct modules for alerting, persistence, detection, and web presentation.
+
+Component interaction:
+- `app.py` interacts with `database.py` for threat persistence and retrieval.
+- `main.py` interacts with `database.py` for persistence and `alert.py` for notifications.
+- `templates/index.html` receives context from `app.py` and renders the threat list and chart.
+- `render.yaml` instructs Render to use Gunicorn to serve `app:app`.
+
+Communication flow:
+- Web browser -> Flask route -> database query -> template render -> browser.
+- Simulated threat thread -> database insert -> web dashboard update.
+- Network traffic capture -> threat detection -> database insert -> alert send.
+
+Module interaction:
+- `app.py` and `main.py` are separate application entry points sharing common database utilities.
+- `database.py` is a shared module for data persistence.
+- `alert.py` is a helper module invoked only by `main.py`.
+
+Lifecycle:
+- Initialization: `init_db()` creates the required database schema.
+- Operation: `app.py` runs a Flask server, `main.py` runs a network monitor.
+- Simulation: `app.py` can generate synthetic threat events.
+- Monitoring: `main.py` listens to network traffic and logs threats.
+
+Request flow:
+- User requests `/`.
+- Flask executes `index()`, reads data from PostgreSQL, and renders `index.html`.
+- Form submissions trigger POST handlers that control the simulator or clear data.
+
+Response flow:
+- Route handlers respond with rendered HTML or redirects.
+- The browser receives HTML, displays the dashboard, and executes Chart.js code.
+
+## SECTION 6
+DATABASE
+
+Database engine:
+- PostgreSQL is the database engine used by the active code.
+- This is confirmed by `psycopg2.connect(DATABASE_URL)` in `database.py` and the `DATABASE_URL` string containing `postgres://...`.
+
+Schema:
+- Single table schema inside PostgreSQL: `threats`.
+
+Tables:
+- `threats`
+
+Models:
+- No ORM model classes are defined. Persistence uses raw SQL statements executed via `psycopg2`.
+
+Entities:
+- Threat event record represented by the `threats` table columns.
+
+Relationships:
+- No relational foreign key relationships exist because there is only one table.
+
+Primary keys:
+- `id SERIAL PRIMARY KEY` in the `threats` table.
+
+Indexes:
+- PostgreSQL automatically creates a primary key index for `id`.
+- No manual indexes are created.
+
+Constraints:
+- `threat_type TEXT NOT NULL`
+- `source_ip TEXT NOT NULL`
+- `timestamp TEXT` has no explicit NOT NULL constraint.
+
+Unique keys:
+- None.
+
+Normalization:
+- The design is denormalized and minimal; a single table stores all threat event attributes.
+- The schema is likely at first normal form for event records but lacks separation for threat type or source IP lookups.
+
+ER relationships:
+- Since there is only one table, no relationships exist beyond the table’s self-contained entity.
+
+Explain every table:
+- `threats`: stores detected or simulated threat events.
+  - `id`: auto-incrementing integer primary key.
+  - `timestamp`: text representation of the time the event occurred.
+  - `threat_type`: type of threat detected, such as `Port Scan`, `Brute Force`, or `DDoS`.
+  - `source_ip`: IP address of the source host associated with the threat.
+
+Explain every column:
+- `id SERIAL PRIMARY KEY`: unique identifier for each threat event.
+- `timestamp TEXT`: timestamp string inserted by Python code, formatted as `%Y-%m-%d %H:%M:%S`.
+- `threat_type TEXT NOT NULL`: category of the detected threat.
+- `source_ip TEXT NOT NULL`: source IP address involved in the detected threat.
+
+Explain every relationship:
+- There are no database relationships because the system uses a single table.
+
+Explain every migration:
+- No migration scripts exist.
+- Schema creation is performed at runtime by `init_db()` with `CREATE TABLE IF NOT EXISTS`.
+
+Mermaid ER Diagram:
+
+```mermaid
+erDiagram
+    THREATS {
+        SERIAL id PK
+        TEXT timestamp
+        TEXT threat_type
+        TEXT source_ip
+    }
+```
+
+## SECTION 7
+API DOCUMENTATION
+
+The repository provides a browser-facing HTTP interface with the following endpoints. There is no separate JSON API.
+
+1. GET `/`
+   - HTTP Method: GET
+   - URL: `/`
+   - Purpose: Render the dashboard showing recent threats, statistics, and simulator state.
+   - Authentication: None.
+   - Authorization: None.
+   - Headers: Standard browser headers.
+   - Parameters: None.
+   - Body: None.
+   - Validation: None.
+   - Business logic:
+     - Calls `get_threats()` to retrieve threat event rows.
+     - Calls `get_threat_stats()` to retrieve aggregated threat counts.
+     - Renders `templates/index.html` with the dataset.
+   - Response: HTML page with threat table, status cards, and chart.
+   - Possible errors:
+     - Database connection failure.
+     - Template render failure.
+   - Status codes: 200 on success.
+   - Example request: `GET /`
+   - Example response: HTML content with dashboard.
+
+2. POST `/start`
+   - HTTP Method: POST
+   - URL: `/start`
+   - Purpose: Start the simulator thread to generate synthetic threat records.
+   - Authentication: None.
+   - Authorization: None.
+   - Headers: `Content-Type: application/x-www-form-urlencoded` or default browser form submission.
+   - Parameters: None.
+   - Body: None.
+   - Validation: None.
+   - Business logic:
+     - Calls `start_simulator()`.
+     - If the simulator is not already running, spawns a daemon thread running `threat_simulator()`.
+     - Redirects the browser back to `/`.
+   - Response: HTTP 302 redirect to `/`.
+   - Possible errors:
+     - Thread creation failure (rare).
+   - Status codes: 302 on redirect.
+   - Example request: HTML form POST to `/start`.
+
+3. POST `/stop`
+   - HTTP Method: POST
+   - URL: `/stop`
+   - Purpose: Stop the simulator thread.
+   - Authentication: None.
+   - Authorization: None.
+   - Headers: Standard form submission headers.
+   - Parameters: None.
+   - Body: None.
+   - Validation: None.
+   - Business logic:
+     - Calls `stop_simulator()` to change the `simulator_running` flag.
+     - Redirects to `/`.
+   - Response: HTTP 302 redirect to `/`.
+   - Possible errors: None explicit.
+   - Status codes: 302.
+   - Example request: HTML form POST to `/stop`.
+
+4. POST `/clear`
+   - HTTP Method: POST
+   - URL: `/clear`
+   - Purpose: Delete all threat records from the database.
+   - Authentication: None.
+   - Authorization: None.
+   - Headers: Standard form submission headers.
+   - Parameters: None.
+   - Body: None.
+   - Validation:
+     - JavaScript confirmation prompt on the client side.
+   - Business logic:
+     - Calls `clear_threats()` in `database.py`.
+     - Redirects to `/`.
+   - Response: HTTP 302 redirect.
+   - Possible errors:
+     - Database connection or execution failure.
+   - Status codes: 302.
+   - Example request: HTML form POST to `/clear`.
+
+5. POST `/ng-admin-toggle-7x`
+   - HTTP Method: POST
+   - URL: `/ng-admin-toggle-7x`
+   - Purpose: Hidden toggle endpoint to start or stop the simulator.
+   - Authentication: None.
+   - Authorization: None.
+   - Headers: Standard form or programmatic POST.
+   - Parameters: None.
+   - Body: None.
+   - Validation: None.
+   - Business logic:
+     - Toggles simulator state.
+     - Redirects to `/`.
+   - Response: HTTP 302 redirect.
+   - Possible errors: None explicit.
+   - Status codes: 302.
+
+Database operations API (internal functions):
+- `get_conn()`: Returns a new psycopg2 connection.
+- `init_db()`: Creates the `threats` table.
+- `insert_threat(threat_type, source_ip, timestamp)`: Inserts a threat event.
+- `get_threats()`: Reads all threat rows in descending order.
+- `get_threat_stats()`: Aggregates threat counts grouped by `threat_type`.
+- `clear_threats()`: Deletes all rows from the `threats` table.
+
+Alerting function:
+- `send_alert(threat, ip)`: Composes and sends an email if SMTP credentials are configured.
+
+Monitoring module operations:
+- `parse_packet(data)`: Extracts source/destination IP, protocol, and packet size from raw packet data.
+- `parse_tcp(data)`: Extracts source and destination TCP ports from raw packet data.
+- `detect_port_scan(src_ip, dst_port)`: Detects scanning activity.
+- `detect_bruteforce(src_ip, dst_port)`: Detects brute-force style repeated connections.
+- `detect_flood(src_ip)`: Detects rapid repeated traffic from a single source.
+- `detect_suspicious_port(src_ip, dst_port)`: Detects connections to known risky ports.
+- `detect_anomaly(src_ip, size)`: Detects unusually large packets from a source.
+- `raw_socket_monitor()`: Captures raw TCP traffic and directs it through heuristics.
+- `psutil_monitor()`: Scans established connections and applies heuristics when raw sockets are unavailable.
+
+## SECTION 8
+AUTHENTICATION
+
+The repository does not implement user authentication.
+
+There is no registration or login flow in `app.py`, `main.py`, or any included template.
+
+JWT: Not used.
+
+Session: Not used.
+
+Cookies: Not used.
+
+Refresh tokens: Not used.
+
+Password hashing: Not used.
+
+Encryption: Only email sending uses SSL to connect to Gmail SMTP. Data in transit for the dashboard is not explicitly encrypted by the code; HTTPS must be provided by the deployment platform.
+
+Roles: None.
+
+Permissions: None.
+
+Authorization: None.
+
+Access control: None.
+
+Security middleware: None.
+
+Conclusion: From an authentication and authorization perspective, the system is open and intended for internal or demonstration use only. Any production deployment should add user and session management.
+
+## SECTION 9
+BUSINESS LOGIC
+
+Feature: Threat simulation
+- Purpose: Enable demonstration of how detected threats appear in the dashboard without requiring real network traffic.
+- Logic: `threat_simulator()` runs in a background thread while `simulator_running` is `True`.
+- Execution flow:
+  1. `start_simulator()` checks `simulator_running`; if false, sets it true.
+  2. Spawns a daemon thread executing `threat_simulator()`.
+  3. The thread chooses a random threat type and random IP, formats the timestamp, inserts it into the database, and sleeps 4–10 seconds.
+  4. `stop_simulator()` sets `simulator_running` false to exit the loop.
+- Files involved: `app.py`, `database.py`, `templates/index.html`.
+- Functions involved: `start_simulator()`, `stop_simulator()`, `threat_simulator()`, `random_ip()`, `insert_threat()`.
+- Database interaction: Inserts records into `threats`.
+- External interaction: None.
+- Edge cases:
+  - If the simulator thread fails, no recovery mechanism exists.
+  - `simulator_running` is global; concurrent modifications are not synchronized with locks.
+
+Feature: Threat logging and persistence
+- Purpose: Save detected events for reporting and historical analysis.
+- Logic: Threat events are inserted with raw SQL statements.
+- Execution flow:
+  1. `init_db()` creates the table if needed.
+  2. `insert_threat()` inserts a new row.
+  3. `get_threats()` returns rows ordered by descending `id`.
+  4. `get_threat_stats()` groups counts by threat type.
+  5. `clear_threats()` deletes all rows.
+- Files involved: `database.py`, `app.py`, `main.py`.
+- Functions involved: `init_db()`, `get_conn()`, `insert_threat()`, `get_threats()`, `get_threat_stats()`, `clear_threats()`.
+- Database interaction: PostgreSQL statements executed via `psycopg2`.
+- External interaction: None beyond the database engine.
+- Edge cases:
+  - Failure to connect to the database causes errors.
+  - Race conditions if parallel writes occur, though PostgreSQL handles concurrent inserts.
+
+Feature: Email alerting
+- Purpose: Notify administrators when suspicious events are detected.
+- Logic: Compose a simple text email and send via SMTP.
+- Execution flow:
+  1. `send_alert()` reads `ALERT_SENDER`, `ALERT_PASSWORD`, and `ALERT_RECEIVER` from environment.
+  2. If any value is missing, it logs alert text to console and returns.
+  3. Otherwise, it creates a MIME text message and sends it through Gmail SMTP SSL on port 465.
+- Files involved: `alert.py`, `main.py`.
+- Functions involved: `send_alert()`.
+- Database interaction: None.
+- External interaction: SMTP service at `smtp.gmail.com`.
+- Edge cases:
+  - Missing environment variables disable email alerts.
+  - Any SMTP exception is printed but ignored.
+  - There is no retry logic.
+
+Feature: Raw socket packet capture
+- Purpose: Monitor inbound TCP traffic directly from the network stack.
+- Logic: Use a raw socket and parse IP and TCP headers to extract source/destination addresses and ports.
+- Execution flow:
+  1. `raw_socket_monitor()` opens a raw IPv4 TCP socket bound to `LOCAL_IP`.
+  2. It sets `IP_HDRINCL` to include IP headers.
+  3. It receives raw packet data and calls `parse_packet()`.
+  4. If the packet destination is not local, it continues.
+  5. If the source IP is blacklisted, it logs a blocked write and continues.
+  6. It parses TCP ports, then runs threat detectors.
+- Files involved: `main.py`.
+- Functions involved: `raw_socket_monitor()`, `parse_packet()`, `parse_tcp()`, detection functions.
+- Database interaction: Via `log_threat()` when a threat is detected.
+- External interaction: Operating system network stack.
+- Edge cases:
+  - PermissionError triggers fallback to psutil.
+  - Exceptions during packet parsing are caught and ignored.
+
+Feature: psutil connection monitoring fallback
+- Purpose: Allow threat monitoring without administrator privileges.
+- Logic: Inspect established TCP connections and infer suspicious activity from connection metadata.
+- Execution flow:
+  1. `psutil_monitor()` fetches network connections every 3 seconds.
+  2. It builds a map of remote IP addresses and remote ports.
+  3. It applies suspicious port detection and brute-force heuristics.
+  4. It detects port scans by counting unique remote ports per source.
+  5. It detects rapid traffic by counting connection instances from the same IP.
+- Files involved: `main.py`.
+- Functions involved: `psutil_monitor()`, `log_threat()`, inline detection logic.
+- Database interaction: `insert_threat()` when threats are detected.
+- External interaction: OS network APIs via psutil.
+- Edge cases:
+  - `psutil.net_connections()` may return incomplete or privileged-only data.
+  - Non-blocking exception handling logs and continues.
+
+Feature: Threat detection heuristics
+- Purpose: Identify suspicious traffic patterns.
+- Logic: Maintain in-memory state for each source IP and evaluate thresholds.
+- Detectors:
+  - Port scan: `PORT_SCAN_THRESHOLD=5` unique ports scanned within `TIME_WINDOW=10` seconds.
+  - Brute force: 5 connection attempts to authentication-related ports within 60 seconds.
+  - DDoS: More than 30 packets within 5 seconds from a single IP.
+  - Suspicious port: Any connection to risky ports `[23, 445, 3389, 4444, 8080]`.
+  - Anomaly: Packet size more than 3 times the average of previous sizes.
+  - Rapid traffic: More than 10 established connections from a remote IP in the psutil view.
+- Files involved: `main.py`.
+- Functions involved: `detect_port_scan()`, `detect_bruteforce()`, `detect_flood()`, `detect_suspicious_port()`, `detect_anomaly()`, inline logic in `psutil_monitor()`.
+- Database interaction: `log_threat()` on detection.
+- External interaction: None.
+- Edge cases:
+  - Attackers can evade thresholds by spacing traffic.
+  - False positives are possible for legitimate high-volume connections.
+  - `cooldown_ok()` suppresses repeated alerts within `ALERT_COOLDOWN=30` seconds per source IP.
+
+## SECTION 10
+SOURCE CODE EXPLANATION
+
+### app.py
+
+`app.py` is the web application entry point.
+
+Imports:
+- `Flask`, `render_template`, `redirect`, `url_for` from `flask`: used to create the web app, render HTML, and redirect after form actions.
+- `init_db`, `insert_threat`, `get_threats`, `get_threat_stats`, `clear_threats` from `database`: used for database setup and CRUD operations.
+- `os`: used to read `PORT` environment variable.
+- `threading`: used for running the simulator background thread.
+- `time`: used to pause the simulator between threat insertions.
+- `random`: used to choose random threat types and generate random IP addresses.
+- `datetime.datetime`: used to generate timestamp strings.
+
+Global variables:
+- `app = Flask(__name__)`: Initialize Flask.
+- `THREAT_TYPES`: List of possible simulated threat categories.
+- `simulator_running = False`: Indicates whether the simulator is active.
+- `simulator_thread = None`: Stores the thread object for the simulator.
+
+Functions:
+- `random_ip()`: Returns a pseudo-random IPv4 address string. It uses `random.randint` to generate each octet.
+- `threat_simulator()`: While `simulator_running` is true, it selects a threat type, generates a random IP, timestamp, logs the threat to the database, and sleeps for a random interval between 4 and 10 seconds.
+- `start_simulator()`: If `simulator_running` is false, sets it to true, creates a daemon thread to run `threat_simulator()`, and starts it.
+- `stop_simulator()`: Sets `simulator_running` false to stop the simulator thread.
+
+Routes:
+- `@app.route("/")` defines the dashboard view. It retrieves threat list and stats and renders `index.html`.
+- `@app.route("/start", methods=["POST"])` starts the simulator and redirects to the index.
+- `@app.route("/stop", methods=["POST"])` stops the simulator and redirects.
+- `@app.route("/clear", methods=["POST"])` clears the database and redirects.
+- `@app.route("/ng-admin-toggle-7x", methods=["POST"])` toggles the simulator state; this route is hidden and likely intended as a backdoor or admin control.
+
+Startup:
+- When run directly with `python app.py`, `app.run(debug=False, host='0.0.0.0', port=<PORT>)` starts the Flask app. `PORT` is read from environment or defaults to 5000.
+
+Notes:
+- `init_db()` is called at module import time, which means the database schema is ensured before the app starts.
+- `simulator_running` and `simulator_thread` are module-level globals; they may not be reliable in a multi-process Gunicorn deployment because each worker will have its own state.
+
+### main.py
+
+`main.py` is the network packet monitoring and alerting engine.
+
+Imports:
+- `init_db`, `insert_threat` from `database`: ensure the threat table exists and allow logging.
+- `send_alert` from `alert`: send email notifications.
+- `datetime.datetime`: timestamp generation.
+- `socket`, `struct`: raw packet handling and socket creation.
+- `threading`: threading support for the monitor.
+- `psutil`: fallback network connection inspection.
+- `time`, `os`: runtime utilities.
+
+Network identification:
+- `LOCAL_IP` is determined via `socket.gethostbyname(socket.gethostname())` and printed. This is the local machine IP address used to bind the raw socket.
+
+Configuration constants:
+- `PORT_SCAN_THRESHOLD = 5`
+- `TIME_WINDOW = 10`
+- `ALERT_COOLDOWN = 30`
+- `RISKY_PORTS = [23, 445, 3389, 4444, 8080]`
+
+Trackers and state maps:
+- `suspicious_ips`: maps source IP to a list of `(dst_port, timestamp)` for port scan detection.
+- `last_alert_time`: maps IP to the last datetime an alert was sent, supporting cooldown.
+- `blacklist`: set of blocked IP addresses to ignore after detection.
+- `login_attempts`: maps IP to a list of login attempt timestamps for brute-force detection.
+- `traffic_count`: maps IP to a list of timestamps for DDoS detection.
+- `connection_tracker`: present but unused.
+- `packet_sizes`: maps IP to recent packet sizes for anomaly detection.
+- `seen_connections`: present but unused.
+
+Helper functions:
+- `log_threat(threat_type, ip)`: creates a timestamp, inserts a threat into the database, prints a log message, and calls `send_alert()`.
+- `cooldown_ok(ip)`: returns `False` if the same IP raised an alert within `ALERT_COOLDOWN` seconds; otherwise updates the last alert time and returns `True`.
+
+Parsing functions:
+- `parse_packet(data)`: Unpacks the first 20 bytes as an IP header and extracts source and destination IPs, protocol, and packet size.
+- `parse_tcp(data)`: Unpacks the TCP header from bytes 20 to 40 and returns the source and destination ports.
+
+Threat detection functions:
+- `detect_port_scan(src_ip, dst_port)`: Tracks unique destination ports for a source IP in the last 10 seconds. Signals a port scan and blacklists the IP when the threshold is reached.
+- `detect_bruteforce(src_ip, dst_port)`: Tracks repeated connection attempts to ports [22, 21, 80, 443, 3389]. Signals a brute-force threat after 5 attempts in 60 seconds.
+- `detect_flood(src_ip)`: Tracks the number of packets from an IP within 5 seconds. Signals a DDoS threat when count exceeds 30.
+- `detect_suspicious_port(src_ip, dst_port)`: Signals a suspicious port threat when the destination port is in `RISKY_PORTS`.
+- `detect_anomaly(src_ip, size)`: Tracks packet sizes per IP. Signals an anomaly when a packet is more than 3x the average of previous packets.
+
+Monitoring implementation:
+- `raw_socket_monitor()`: Creates a raw TCP socket, binds to the local IP, sets `IP_HDRINCL`, and loops on receiving packets.
+  - Filters packets not destined for `LOCAL_IP`.
+  - Blocks packets from blacklisted IPs.
+  - Parses TCP header and executes detection functions.
+  - If `PermissionError` occurs, or any other exception, falls back to `psutil_monitor()`.
+- `psutil_monitor()`: Polls `psutil.net_connections(kind='inet')`.
+  - Aggregates remote IPs and ports from established connections.
+  - Detects suspicious ports and brute-force attempts via connection metadata.
+  - Detects port scans by counting unique ports per source.
+  - Detects rapid traffic by counting connection instances per IP.
+  - Sleeps 3 seconds between iterations.
+
+Startup:
+- When run directly, `main.py` prints "Starting NetGuard Network Monitoring...", starts `raw_socket_monitor()` in a daemon thread, and waits on the thread.
+
+Notes:
+- `main.py` does not start the Flask dashboard. It is designed as a separate monitoring engine.
+- `init_db()` is called at module import time in `main.py` as well.
+- The raw socket monitor requires administrator/root privileges.
+- `psutil_monitor()` is the fallback when raw sockets are unavailable.
+
+### database.py
+
+Imports:
+- `psycopg2`: PostgreSQL driver.
+- `os`: environment variable access.
+- `dotenv.load_dotenv`: loads `.env` values into `os.environ`.
+
+Environment configuration:
+- `load_dotenv()` loads environment variables from `.env`.
+- `DATABASE_URL = os.environ.get("DATABASE_URL")` reads the PostgreSQL connection URL.
+
+Functions:
+- `get_conn()`: returns `psycopg2.connect(DATABASE_URL)`.
+- `init_db()`: connects and executes `CREATE TABLE IF NOT EXISTS threats ...`.
+- `insert_threat(threat_type, source_ip, timestamp)`: inserts a record into `threats`.
+- `get_threats()`: selects all threats ordered by `id DESC`.
+- `get_threat_stats()`: selects `threat_type, COUNT(*)` grouped by threat type.
+- `clear_threats()`: deletes all rows from `threats`.
+
+Behavior details:
+- Connections are opened and closed per function call.
+- `init_db()` prints a success message when run.
+- SQL statements use parameterized queries for insert.
+- There is no connection pooling.
+- There is no error handling around `psycopg2.connect` or cursor operations.
+
+### alert.py
+
+Imports:
+- `smtplib`: SMTP client library.
+- `os`: environment variable access.
+- `MIMEText` from `email.mime.text`: builds plain text email messages.
+
+Function:
+- `send_alert(threat, ip)`: reads `ALERT_SENDER`, `ALERT_PASSWORD`, `ALERT_RECEIVER`; composes an email subject and body; sends via `SMTP_SSL("smtp.gmail.com", 465)`.
+
+Details:
+- If credentials are missing, it logs a fallback console alert message and returns.
+- It calls `server.login(sender, password)` and `server.send_message(msg)`.
+- Exceptions are caught and logged, but not escalated.
+
+### simulator.py
+
+Contents:
+- Commented-out example code using Scapy to simulate a port scan.
+- The code is not active and not imported by the application.
+
+Implications:
+- `scapy` is not required by `requirements.txt`.
+- `simulator.py` serves as a placeholder or illustrative artifact.
+
+### templates/index.html
+
+Template structure:
+- HTML5 document with `lang="en"`.
+- Meta refresh every 3 seconds.
+- Custom embedded CSS for dark dashboard styling.
+- Top-level header with title.
+- Stat cards for total threats, last threat, and simulator status.
+- Action buttons for Start, Stop, and Clear.
+- Threat table with columns `ID`, `Timestamp`, `Threat Type`, `Source IP`.
+- Chart container with a Canvas element for Chart.js.
+- Chart.js loaded from CDN.
+- JavaScript initializes a bar chart with `labels` and `values` from Flask template context.
+
+Template variables:
+- `threats`: list of rows returned by `get_threats()`.
+- `labels`: list of threat types from `get_threat_stats()`.
+- `values`: counts corresponding to each threat type.
+- `running`: boolean indicating simulator status.
+
+Template behavior:
+- Displays `None` for last threat when `threats` is empty.
+- Disables start/stop buttons based on simulator state.
+- Confirms deletion of threats via `onsubmit` in the `Clear` form.
+- Uses Jinja2 `tojson` filters to pass chart data safely into JavaScript.
+
+### requirements.txt
+
+Dependencies specified:
+- `Flask==3.1.3`
+- `Werkzeug==3.1.6`
+- `Jinja2==3.1.6`
+- `gunicorn==21.2.0`
+- `psycopg2-binary==2.9.9`
+- `python-dotenv==1.0.1`
+- `psutil==5.9.8`
+
+### render.yaml
+
+Deployment configuration:
+- Defines one web service named `netguard`.
+- Runtime: python.
+- `buildCommand`: `pip install -r requirements.txt`.
+- `startCommand`: `gunicorn app:app`.
+- `envVars`: sets `PYTHON_VERSION` to `3.11.0`.
+
+Interpretation:
+- This manifest is intended for Render.com or another platform that uses a similar YAML format.
+- The application is launched with Gunicorn serving the Flask `app` object from `app.py`.
+
+### runtime.txt
+
+Specifies Python runtime version:
+- `python-3.11.0`
+
+Usage:
+- Platforms like Heroku or Render use this file to select the Python interpreter version.
+
+### .env
+
+Configuration values found:
+- `DATABASE_URL=postgres://avnadmin:<YOUR_PASSWORD>@<YOUR_HOST>:<PORT>/defaultdb?sslmode=require`
+
+Implications:
+- The application expects a PostgreSQL URL in standard format.
+- The database is hosted on Aiven cloud.
+
+### .gitignore
+
+Ignored artifacts:
+- `.env`: sensitive secrets.
+- `*.db`: local database files.
+- `__pycache__/`: Python bytecode cache.
+- `*.pyc`: compiled Python files.
+
+## SECTION 11
+FRONTEND
+
+UI structure:
+- Single-page dashboard layout.
+- Sticky header at top.
+- Cards for summary statistics.
+- Table listing threat records.
+- Chart visualization for threat distribution.
+- Control buttons for simulator operation.
+
+Pages:
+- One page: `/`.
+
+Navigation:
+- No navigation menu beyond the dashboard.
+- All actions are performed through buttons on the page.
+
+Components:
+- Header title.
+- Four status cards: Total Threats, Last Threat, Status, and action buttons.
+- Threat table container.
+- Chart container.
+- Embedded forms for POST actions.
+
+Layouts:
+- Flex-based responsive layout with a table on the left and chart on the right.
+- Responsive CSS modifies layout for screen widths below 900px.
+
+Forms:
+- Start simulator: form POST `/start`.
+- Stop simulator: form POST `/stop`.
+- Clear threats: form POST `/clear` with client-side confirmation.
+
+Validation:
+- No server-side HTML input validation needed because forms submit no user-entered fields.
+- Client-side `confirm()` is used for clearing threats.
+
+State management:
+- No JavaScript state management beyond rendering chart data from server variables.
+- Template logic controls button states and status display.
+
+Routing:
+- Server-side routing via Flask.
+- No client-side routing.
+
+API integration:
+- Frontend uses server-rendered data injected by Flask.
+- Chart data is passed via template variables and `tojson`.
+
+Responsive design:
+- CSS media query changes layout to vertical stacking on narrow screens.
+- Table and chart width adapt to 90% on small screens.
+
+Theme:
+- Dark theme with blue accent colors.
+- `#020617` background and `#38bdf8` accent highlight.
+
+Assets:
+- No external asset files besides Chart.js CDN.
+- Styling is embedded in the template.
+
+Icons:
+- Uses emoji characters in header and buttons.
+- No icon font or external icon library.
+
+## SECTION 12
+BACKEND
+
+Architecture:
+- Backend is implemented in Python.
+- There are two separate backend components: the Flask web server and the network monitor.
+
+Controllers:
+- `app.py` contains HTTP route handlers for the dashboard.
+- There are no dedicated controller classes; route functions serve as controllers.
+
+Services:
+- Database persistence service in `database.py`.
+- Email alert service in `alert.py`.
+- Network threat detection service in `main.py`.
+
+Repositories:
+- Not implemented as a separate layer; `database.py` serves as the repository and database access layer.
+
+Routes:
+- Defined in `app.py` for dashboard and simulator control.
+
+Middleware:
+- None.
+
+Error handling:
+- Minimal; mostly `try/except` blocks in `main.py` and `alert.py`.
+- Database errors are not explicitly handled.
+
+Validation:
+- No input validation required by current routes.
+- Environment variable presence is checked only in alerting.
+
+Business rules:
+- The threat detection heuristics define when to log a threat.
+- Alerts are subject to a cooldown of 30 seconds per source IP.
+- Blacklist is used to ignore already identified malicious IPs.
+- The simulator can inject synthetic threats independently.
+
+## SECTION 13
+ALGORITHMS
+
+Identify all algorithms:
+- Random IP generation.
+- Random threat selection.
+- Port scan detection.
+- Brute-force detection.
+- DDoS detection via traffic rate.
+- Suspicious port detection.
+- Packet anomaly detection.
+- Raw packet parsing.
+- Fallback connection aggregation.
+
+Explain:
+
+Algorithm: Random IP generation
+- Purpose: Generate pseudo-random source IP addresses for simulator events.
+- Logic: Concatenate four random octets, with first and last octets selected from 1-254, middle octets from 0-254.
+- Pseudo code:
+  - return f"{rand(1,254)}.{rand(0,254)}.{rand(0,254)}.{rand(1,254)}"
+- Complexity: O(1).
+- Optimization: None needed.
+
+Algorithm: Threat simulation
+- Purpose: Periodically insert synthetic threats.
+- Logic: Loop while running, choose a random threat from a list, generate random IP, insert event, sleep random duration.
+- Complexity: O(1) per event.
+- Optimization: Minimal; uses random intervals.
+
+Algorithm: Raw packet parsing
+- Purpose: Extract IP and TCP header fields from raw packet bytes.
+- Logic: Unpack the first 20 bytes for IP header and bytes 20-40 for TCP header.
+- Pseudo code:
+  - iph = struct.unpack('!BBHHHBBH4s4s', ip_header)
+  - src_ip = inet_ntoa(iph[8])
+  - dst_ip = inet_ntoa(iph[9])
+  - protocol = iph[6]
+  - size = len(data)
+  - return src_ip, dst_ip, protocol, size
+- Complexity: O(1) per packet.
+- Optimization: No additional optimization.
+
+Algorithm: Port scan detection
+- Purpose: Detect if a source IP contacts many distinct destination ports quickly.
+- Logic:
+  1. Append `(dst_port, now)` to `suspicious_ips[src_ip]`.
+  2. Keep only entries within the last `TIME_WINDOW` seconds.
+  3. Count distinct ports.
+  4. If count >= `PORT_SCAN_THRESHOLD` and cooldown allows, log threat and blacklist IP.
+- Pseudo code:
+  - suspicious_ips[src_ip].append((dst_port, now))
+  - filter old entries older than TIME_WINDOW
+  - ports = set(port for port,t in suspicious_ips[src_ip])
+  - if len(ports) >= threshold and cooldown_ok(src_ip): log_threat("Port Scan", src_ip); blacklist.add(src_ip); clear list
+- Complexity: O(n) where n is entries per IP.
+- Optimization: list filtering and set construction; manageable due to small window.
+
+Algorithm: Brute-force detection
+- Purpose: Detect repeated attempts on sensitive ports.
+- Logic:
+  1. If `dst_port` is in authentication-related ports, append timestamp.
+  2. Keep only timestamps within 60 seconds.
+  3. If count >= 5 and cooldown allows, log threat.
+- Pseudo code:
+  - if dst_port in [22,21,80,443,3389]: login_attempts[src_ip].append(now)
+  - filter entries older than 60 seconds
+  - if len(login_attempts[src_ip]) >= 5 and cooldown_ok(src_ip): log_threat("Brute Force", src_ip); clear list
+- Complexity: O(m) with m attempts for IP.
+- Optimization: uses time-based sliding window.
+
+Algorithm: DDoS detection (flood)
+- Purpose: Detect high frequency packet bursts from an IP.
+- Logic:
+  1. Append timestamp to `traffic_count[src_ip]`.
+  2. Keep only entries within 5 seconds.
+  3. If count > 30 and cooldown allows, log DDoS.
+- Pseudo code:
+  - traffic_count[src_ip].append(now)
+  - filter timestamps older than 5 seconds
+  - if len(traffic_count[src_ip]) > 30 and cooldown_ok(src_ip): log_threat("DDoS", src_ip)
+- Complexity: O(k) for packet timestamps.
+- Optimization: sliding time window.
+
+Algorithm: Suspicious port detection
+- Purpose: Flag any connection to a set of risky ports.
+- Logic: If `dst_port` is in `RISKY_PORTS` and cooldown allows, log threat.
+- Pseudo code:
+  - if dst_port in risky_ports and cooldown_ok(src_ip): log_threat("Suspicious Port", src_ip)
+- Complexity: O(1).
+- Optimization: constant-time membership check.
+
+Algorithm: Packet anomaly detection
+- Purpose: Detect packet sizes that deviate from recent average.
+- Logic:
+  1. Append packet size to `packet_sizes[src_ip]`.
+  2. When more than 10 sizes are collected, calculate average.
+  3. If current size > average * 3 and cooldown allows, log anomaly.
+  4. Reset packet sizes list.
+- Pseudo code:
+  - packet_sizes[src_ip].append(size)
+  - if len(packet_sizes[src_ip]) > 10: avg = sum(list)/len(list)
+  - if size > avg*3 and cooldown_ok(src_ip): log_threat("Anomaly", src_ip)
+  - packet_sizes[src_ip] = []
+- Complexity: O(n) for average calculation when threshold reached.
+- Optimization: resets after evaluation.
+
+Algorithm: psutil-based port scan detection
+- Purpose: Detect scanning based on remote ports in established connections.
+- Logic:
+  1. Build `ip_ports` mapping remote IP to a set of remote ports.
+  2. After iterating connections, if a source has >= threshold unique ports and cooldown allows, log port scan.
+- Complexity: O(c) where c is number of connections.
+- Optimization: uses set membership to count unique ports.
+
+Algorithm: Rapid traffic detection in psutil fallback
+- Purpose: Identify sources with many established connections.
+- Logic: Count occurrences of each remote IP in current connection list; if > 10 and cooldown allows, log rapid traffic.
+- Complexity: O(c^2) in current implementation because `all_ips.count(ip)` is repeated for each unique IP.
+- Optimization note: This can be optimized with a dictionary count, but current code uses list counting.
+
+## SECTION 14
+SECURITY
+
+Authentication:
+- Not implemented.
+- Dashboard access is unrestricted.
+
+Authorization:
+- Not implemented.
+
+Encryption:
+- Email alerts use SSL over SMTP if configured.
+- Database connection uses URL with `sslmode=require`, indicating encrypted PostgreSQL transport.
+- Web traffic depends on deployment platform for HTTPS.
+
+Input validation:
+- There is minimal validation because current forms do not accept user-supplied text.
+- `PORT` environment variable is converted to int without explicit validation.
+
+Sanitization:
+- Database queries use parameterized SQL for inserts, providing protection against SQL injection on threat event fields.
+- No sanitization is required for current dashboard form actions.
+
+CSRF:
+- Not addressed.
+- Flask forms are not protected with CSRF tokens.
+
+CORS:
+- Not addressed.
+- No cross-origin restrictions are configured.
+
+Rate limiting:
+- Not implemented.
+
+Password security:
+- Email password is read from environment variables.
+- No hashing is applied because SMTP credentials are plain-text secrets.
+
+Environment variables:
+- Used for sensitive configuration.
+- `.env` is present and ignored by Git.
+- `DATABASE_URL` is required for PostgreSQL connectivity.
+- `ALERT_SENDER`, `ALERT_PASSWORD`, `ALERT_RECEIVER` are optional for email alerts.
+- `PORT` is optional for Flask port selection.
+- `PYTHON_VERSION` is included in `render.yaml` for deployment.
+
+Secrets:
+- Stored in `.env`.
+- Not encrypted.
+- `.env` is excluded via `.gitignore`.
+
+Security headers:
+- None explicitly set by Flask or custom code.
+
+Potential vulnerabilities:
+- No authentication or authorization exposes the dashboard to anyone who can reach it.
+- CSRF risk for POST endpoints controlling simulator state and clearing threats.
+- Raw sockets require elevated privileges and may allow unintended packet handling.
+- The hidden endpoint `/ng-admin-toggle-7x` is security by obscurity.
+- `main.py` calls `socket.gethostbyname(socket.gethostname())`, which may return non-routable or incorrect local IP addresses in complex network environments.
+- The web UI refreshes every 3 seconds, potentially causing frequent database queries.
+- The `psutil_monitor()` rapid traffic counter uses `list.count()` inside a loop, which is O(n^2) and may consume CPU if many connections exist.
+- Email credentials are stored in environment variables without additional encryption.
+
+Mitigation:
+- Deploy the app behind authentication and HTTPS.
+- Add CSRF protection using Flask-WTF or explicit tokens.
+- Restrict access to the dashboard by network ACLs.
+- Remove or secure the hidden toggle endpoint.
+- Add error handling and connection pooling for database access.
+- Use secure secret management for SMTP credentials.
+
+## SECTION 15
+ERROR HANDLING
+
+Exceptions:
+- `main.py` catches broad exceptions in raw socket monitor and fallback operations.
+- `alert.py` catches all exceptions during email sending and prints errors.
+- `database.py` does not catch exceptions around SQL execution.
+
+Validation:
+- There is no explicit request validation.
+- Environment variables are partially validated in `alert.py`.
+
+Logging:
+- The application uses `print()` statements for startup messages, detected threats, and error notifications.
+- `database.py` prints a success message when initializing.
+- No external logging framework is used.
+
+Recovery:
+- Raw socket errors recover by switching to `psutil_monitor()`.
+- `alert.py` logs failures and continues without retrying.
+
+Fallback:
+- The system falls back from raw socket monitoring to psutil-based monitoring when raw sockets are unavailable.
+- If email config is missing, alerts are logged to console.
+
+Retry:
+- No retry mechanism is implemented for database or email failures.
+
+## SECTION 16
+CONFIGURATION
+
+Environment variables:
+- `DATABASE_URL`: sets the PostgreSQL connection string.
+- `ALERT_SENDER`: Gmail address used as the sender for alerts.
+- `ALERT_PASSWORD`: Gmail SMTP password or app-specific password.
+- `ALERT_RECEIVER`: destination email address for alerts.
+- `PORT`: Flask port number for local runtime.
+- `PYTHON_VERSION`: specified in `render.yaml` for deployment.
+
+Configuration files:
+- `.env`: local environment variable storage.
+- `render.yaml`: deployment manifest.
+- `requirements.txt`: dependency list.
+- `runtime.txt`: runtime version specification.
+- `.gitignore`: VCS ignore rules.
+
+Package configuration:
+- `requirements.txt` pins package versions.
+- No `setup.py` or `pyproject.toml` exists.
+
+Runtime configuration:
+- `app.py` reads `PORT` and defaults to 5000.
+- `render.yaml` configures the app to start using `gunicorn app:app`.
+
+Secrets:
+- Stored in `.env` and referenced by `os.environ`.
+- `DATABASE_URL` contains database credentials.
+- `ALERT_PASSWORD` may contain SMTP credentials.
+
+## SECTION 17
+EXTERNAL SERVICES
+
+APIs:
+- PostgreSQL database service accessed through `DATABASE_URL`.
+- Gmail SMTP service used by `alert.py` when credentials are present.
+
+SDKs:
+- `psycopg2-binary`: PostgreSQL client library.
+
+Payment gateway: None.
+
+Email provider:
+- Gmail SMTP (`smtp.gmail.com`, port 465 via SSL).
+
+Cloud storage: None.
+
+Notification:
+- Email alerts via SMTP.
+
+Maps: None.
+
+AI service: None.
+
+Analytics: None.
+
+## SECTION 18
+WORKFLOW
+
+Authentication flow:
+- None.
+
+Registration flow:
+- None.
+
+Data processing flow:
+- Incoming traffic or simulator event -> threat detection -> database insert -> alert send -> dashboard display.
+
+API lifecycle:
+- Browser requests data -> Flask controller queries database -> response returned -> frontend updates.
+
+Main business logic flow:
+- Monitor network -> identify suspicious behavior -> log threats -> notify via alert -> expose results in dashboard.
+
+System execution flow:
+1. Load environment variables.
+2. Initialize database.
+3. Start network monitor or web app.
+4. Capture events.
+5. Store and display them.
+
+Mermaid workflow diagrams:
+
+```mermaid
+flowchart TD
+    A[Start Application] --> B{Run Mode}
+    B -->|app.py| C[Initialize DB]
+    B -->|main.py| C
+    C --> D{If Web App}
+    D -->|Yes| E[Start Flask Server]
+    D -->|No| F[Start Network Monitor]
+    F --> G{Raw Socket Available?}
+    G -->|Yes| H[Capture Raw Packets]
+    G -->|No| I[Use psutil Monitor]
+    H --> J[Parse Packets]
+    I --> J
+    J --> K[Apply Detection Rules]
+    K --> L[Insert Threat into DB]
+    L --> M[Send Email Alert if Configured]
+    E --> N[Render Dashboard]
+    N --> O[User Interacts]
+    O --> P{Start/Stop/Clear}
+    P --> Q[Modify Simulator or DB]
+    Q --> N
+```
+
+## SECTION 19
+SEQUENCE DIAGRAMS
+
+Major operation: dashboard load:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant FlaskApp
+    participant Database
+    User->>Browser: Navigate to /
+    Browser->>FlaskApp: GET /
+    FlaskApp->>Database: get_threats()
+    Database-->>FlaskApp: threat rows
+    FlaskApp->>Database: get_threat_stats()
+    Database-->>FlaskApp: aggregated counts
+    FlaskApp-->>Browser: render HTML
+    Browser-->>User: display dashboard
+```
+
+Major operation: threat simulation:
+
+```mermaid
+sequenceDiagram
+    participant WebApp
+    participant SimulatorThread
+    participant Database
+    participant Browser
+    WebApp->>SimulatorThread: start_simulator()
+    SimulatorThread->>Database: insert_threat()
+    Database-->>SimulatorThread: ack
+    SimulatorThread-->>WebApp: threat inserted
+    WebApp-->>Browser: redirect /
+```
+
+Major operation: raw packet threat detection:
+
+```mermaid
+sequenceDiagram
+    participant Monitor
+    participant Network
+    participant Database
+    participant AlertService
+    Network-->>Monitor: TCP packet arrives
+    Monitor->>Monitor: parse_packet()
+    Monitor->>Monitor: detect_port_scan()
+    alt Threat detected
+        Monitor->>Database: insert_threat()
+        Database-->>Monitor: ack
+        Monitor->>AlertService: send_alert()
+        AlertService-->>SMTP: send email
+    end
+```
+
+## SECTION 20
+USE CASES
+
+Use Case 1: View threat dashboard
+- Actor: SOC analyst or operator.
+- Preconditions: The web server is running and connected to the database.
+- Postconditions: The user sees current threat events and statistics.
+- Normal flow:
+  1. User opens browser and navigates to `/`.
+  2. Browser issues GET request.
+  3. Application queries threat records and stats.
+  4. Application renders the dashboard.
+  5. User views the data.
+- Alternative flow: If the database is unavailable, the page may fail to render.
+- Exceptions: Missing database or template render issue.
+
+Use Case 2: Start threat simulation
+- Actor: SOC analyst or demo operator.
+- Preconditions: Dashboard is accessible.
+- Postconditions: Simulator begins generating synthetic threats.
+- Normal flow:
+  1. User clicks Start.
+  2. Browser sends POST to `/start`.
+  3. Flask app invokes `start_simulator()`.
+  4. Simulator thread begins inserting threats.
+  5. Browser is redirected to `/`.
+- Alternative flow: If simulator already running, start has no effect.
+- Exceptions: Thread creation failure.
+
+Use Case 3: Stop threat simulation
+- Actor: SOC analyst.
+- Preconditions: Simulator is running.
+- Postconditions: Simulator stops.
+- Normal flow:
+  1. User clicks Stop.
+  2. Browser sends POST to `/stop`.
+  3. Flask app sets `simulator_running` false.
+  4. Simulator thread exits gracefully.
+  5. Browser redirects to `/`.
+- Exceptions: None explicit.
+
+Use Case 4: Clear threats
+- Actor: SOC analyst.
+- Preconditions: Threat records exist.
+- Postconditions: Database table is empty.
+- Normal flow:
+  1. User clicks Clear.
+  2. Browser shows confirmation prompt.
+  3. After confirmation, POST to `/clear` is submitted.
+  4. Flask app calls `clear_threats()`.
+  5. Browser redirects to `/`.
+- Exceptions: Database deletion failure.
+
+Use Case 5: Monitor real network traffic
+- Actor: Network security monitor running `main.py`.
+- Preconditions: The host has network access and Python dependencies installed.
+- Postconditions: Suspicious traffic is detected and logged.
+- Normal flow:
+  1. Operator runs `python main.py`.
+  2. Application initializes database.
+  3. Raw socket monitor starts.
+  4. Packets are captured and parsed.
+  5. Detection heuristics log threats.
+  6. Alerts are sent if configured.
+- Alternative flow: Without admin rights, `psutil_monitor()` runs.
+- Exceptions: Packet parsing or psutil errors are logged.
+
+## SECTION 21
+FUNCTIONAL REQUIREMENTS
+
+Extracted requirements:
+- The system must initialize a PostgreSQL database schema during startup.
+- The system must provide a web dashboard listing detected threats.
+- The system must visualize threat distribution by type.
+- The system must support starting and stopping a synthetic threat simulator.
+- The system must support clearing stored threat data.
+- The system must capture network traffic through raw sockets when permitted.
+- The system must fallback to psutil-based monitoring when raw sockets are unavailable.
+- The system must detect port scans, brute-force attempts, DDoS traffic, suspicious ports, anomalies, and rapid traffic.
+- The system must log threat events with timestamp, type, and source IP.
+- The system must optionally send email alerts when threats are detected.
+- The system must reload the dashboard automatically every 3 seconds.
+- The system must use environment variables for sensitive configuration.
+- The system must be deployable using Gunicorn on Python 3.11.
+
+## SECTION 22
+NON-FUNCTIONAL REQUIREMENTS
+
+Performance:
+- The system must handle frequent dashboard refreshes and occasional threat insertions.
+- Monitoring should tolerate raw packet processing or fallback scanning.
+- No explicit performance guarantees are present.
+
+Reliability:
+- The application initializes its database schema on startup.
+- The monitor falls back gracefully from raw sockets to `psutil`.
+- There is no redundant fault tolerance.
+
+Availability:
+- The dashboard is available as long as Flask is running.
+- The network monitor is available as long as `main.py` is running.
+
+Security:
+- Application lacks authentication and CSRF protection.
+- Database credentials and SMTP credentials are loaded from environment variables.
+
+Scalability:
+- The application is monolithic and not designed for horizontal scaling.
+- The simulator state is not shared across multiple web workers.
+
+Maintainability:
+- The codebase is small and readable, enabling modifications.
+- There is no structured error handling or service abstraction.
+
+Portability:
+- Runs on any OS with Python 3.11 and PostgreSQL connectivity.
+- Raw socket monitoring is platform-dependent and may require elevated privileges.
+
+Usability:
+- Simple dashboard with a clear threat table and status cards.
+- No user onboarding or authentication required.
+
+Compatibility:
+- Compatible with Python 3.11.
+- Designed for Flask 3.x and PostgreSQL.
+
+## SECTION 23
+DESIGN DECISIONS
+
+Why important architectural decisions were made:
+- Monolithic Python application: simplifies development and deployment for a small project.
+- Flask for dashboard: provides a lightweight web layer without heavy frontend frameworks.
+- PostgreSQL with `psycopg2`: uses a production-capable relational database instead of local file storage to demonstrate serious persistence.
+- Raw sockets with `psutil` fallback: supports both privileged and non-privileged network monitoring environments.
+- Environment variable configuration: enables deployment with secret management and avoids hardcoding credentials.
+- Gunicorn in `render.yaml`: standard deployment pattern for Flask apps.
+- Single-table schema: keeps data management simple for a proof-of-concept threat log.
+- Client-side auto-refresh: reduces the need for WebSockets and simplifies live updates.
+
+## SECTION 24
+DEPENDENCY ANALYSIS
+
+Explain every dependency:
+- Flask: serves HTTP requests, routes, and template rendering.
+- Werkzeug: implements underlying WSGI and request/response utilities used by Flask.
+- Jinja2: renders server-side HTML templates with dynamic values.
+- gunicorn: production WSGI server for the Flask app; not required for local development but used for deployment.
+- psycopg2-binary: PostgreSQL adapter enabling SQL execution.
+- python-dotenv: loads environment variables from `.env`.
+- psutil: inspects network connections as a fallback for raw socket capture.
+
+How each interacts:
+- Flask loads `app.py` and dispatches routes.
+- Jinja2 processes `templates/index.html` with Flask context.
+- gunicorn imports `app.py` and runs the Flask app across worker processes.
+- psycopg2-binary is imported by `database.py` for DB connections.
+- python-dotenv is imported and executed in `database.py` to set `DATABASE_URL` before DB use.
+- psutil is imported in `main.py` and used when raw socket mode fails.
+
+## SECTION 25
+DEPLOYMENT
+
+Installation:
+1. Clone repository.
+2. Create a Python 3.11 virtual environment.
+3. Activate the environment.
+4. Install dependencies with `pip install -r requirements.txt`.
+
+Setup:
+1. Create `.env` with `DATABASE_URL` and optional SMTP credentials.
+2. Ensure PostgreSQL is reachable at the configured URL.
+3. If using email alerts, set `ALERT_SENDER`, `ALERT_PASSWORD`, and `ALERT_RECEIVER`.
+
+Configuration:
+- `DATABASE_URL` is mandatory.
+- `PORT` can be set for Flask.
+- `PYTHON_VERSION` is set in `render.yaml`.
+
+Environment:
+- Local development uses `python app.py` or `python main.py`.
+- Deployment uses Gunicorn with `gunicorn app:app`.
+
+Build:
+- `pip install -r requirements.txt`.
+
+Deployment:
+- Render manifest suggests deployment via Render.com.
+- `render.yaml` defines build and start commands.
+- `runtime.txt` selects Python 3.11.
+
+Production:
+- Use `gunicorn app:app` to serve the Flask application.
+- Ensure environment variables are set in the deployment environment.
+- In production, secure the dashboard with authentication and HTTPS.
+
+CI/CD:
+- No CI/CD configuration files are present.
+- Deployment manifest indicates manual or platform-managed deployment.
+
+## SECTION 26
+TESTING
+
+Testing strategy:
+- No tests are provided.
+- The codebase requires manual testing and inspection.
+
+Validation:
+- Database schema initialization can be validated by running the app and confirming table creation.
+- Email alerting can be validated by configuring SMTP and observing log output.
+- Simulator behavior can be validated through the dashboard and database records.
+
+Possible unit tests:
+- `test_database_init`: verify `init_db()` creates the table.
+- `test_insert_threat`: verify a threat record is inserted correctly.
+- `test_get_threat_stats`: verify aggregated counts correct.
+- `test_cooldown_ok`: verify cooldown logic works.
+- `test_detect_port_scan`: verify threshold detection.
+- `test_detect_bruteforce`: verify repeated port detection.
+- `test_alert_disabled_without_env`: verify fallback logging when SMTP vars missing.
+
+Integration tests:
+- Start Flask app and verify GET `/` returns HTML.
+- POST `/start` and `/stop` producing correct simulator state changes.
+- Run `main.py` in psutil mode and confirm threat logging with dummy connections.
+
+Manual testing:
+- Open dashboard and click simulator controls.
+- Check that the page refreshes and chart updates.
+- Configure mock SMTP credentials and generate a threat.
+- Clear the threat table and confirm reset.
+
+## SECTION 27
+PERFORMANCE
+
+Identify:
+- No caching layer.
+- Database connections are opened and closed for each operation.
+- Auto-refresh every 3 seconds can generate frequent server load.
+
+Optimization:
+- Use connection pooling for PostgreSQL.
+- Replace list `.count()` in `psutil_monitor()` with dictionary counts.
+- Replace string timestamp storage with explicit timestamp type.
+- Add caching for repeated dashboard stats queries if scale grows.
+
+Bottlenecks:
+- `psutil_monitor()` uses potentially expensive connection inspection and repeated list counting.
+- Concurrent Gunicorn workers will each have separate simulator state.
+- Frequent dashboard refresh with large result sets could slow response.
+
+Memory usage:
+- In-memory threat tracking maps store data for every monitored source IP during runtime.
+- These maps are reset by cooldowns and detection functions but can grow if many unique IPs connect.
+
+Database optimization:
+- Single table with no indexes besides primary key.
+- Aggregation query `GROUP BY threat_type` is acceptable for small datasets.
+- For larger datasets, an index on `threat_type` or a normalized threat type table may be beneficial.
+
+## SECTION 28
+LIMITATIONS
+
+Current limitations:
+- No user authentication or role-based access.
+- No CSRF protection.
+- No API for external systems beyond the rendered dashboard.
+- No structured logging or monitoring.
+- No testing suite.
+- No database migrations.
+- Hidden toggle endpoint can be abused.
+- Simulator state is not shared across processes.
+- Raw socket monitoring requires elevated permissions.
+- Email alerting depends on hard-coded Gmail settings.
+- Data model is limited to a single threat table.
+- No multi-user support.
+- No support for incoming UDP traffic or non-TCP protocols.
+- No mechanism to remove or manage blacklisted IPs.
+- `simulator.py` is unused and only contains example code.
+
+## SECTION 29
+FUTURE IMPROVEMENTS
+
+Realistic future enhancements:
+- Add user authentication and authorization to secure the dashboard.
+- Implement CSRF protection and input validation.
+- Add WebSocket or Server-Sent Events for real-time dashboard updates.
+- Create a formal API for threat event access and control operations.
+- Implement database migrations with Alembic.
+- Add structured logging using Python's `logging` module.
+- Replace global simulator state with a shared process-safe mechanism.
+- Add role-based access control for admin functions.
+- Modularize detection logic into classes or service layers.
+- Add unit and integration tests.
+- Enable configuration of detection thresholds and rules through the web UI.
+- Support additional protocols and richer packet metadata.
+- Add a blacklist management UI and persistence.
+- Improve performance with database connection pooling.
+- Add a deployment CI/CD pipeline.
+- Provide a dedicated `settings.py` or `config.py` for environment and runtime configuration.
+- Add support for HTTPS and secure cookies.
+
+## SECTION 30
+ACADEMIC INFORMATION EXTRACTION
+
+Project abstract:
+NetGuard is a Python-based proof-of-concept cybersecurity system that combines a web dashboard and network traffic monitoring to detect suspicious connection patterns. It uses heuristic algorithms to identify port scanning, brute-force attempts, DDoS-style flooding, risky port access, anomalous packet sizes, and rapid traffic spikes, persisting events into a PostgreSQL database and optionally notifying administrators via email.
+
+Research motivation:
+The motivation is to demonstrate how lightweight intrusion detection techniques can be implemented in a web-enabled security operations context using open-source Python libraries and a managed database.
+
+Problem statement:
+Modern networks are vulnerable to automated scanning and attack patterns, and small teams need accessible tools to monitor and visualize these threats in real time. Existing systems may be too complex or require expensive infrastructure.
+
+Aim:
+To build a functional prototype that detects common network threat behaviors, logs incidents, and provides a dashboard for visualization and control.
+
+Objectives:
+- Develop a PostgreSQL-backed persistence layer for threat events.
+- Implement a Flask-based web dashboard for threat visualization.
+- Detect key threat patterns using packet capture and connection inspection.
+- Provide email alerting for detected threats.
+- Enable simulated threat generation for demonstration and testing.
+
+Research questions:
+- How effectively can basic heuristic rules detect port scanning, brute-force access, and DDoS-like traffic?
+- What challenges arise when monitoring network traffic from a Python application with limited privileges?
+- How can threat detection results be presented in a simple yet informative dashboard?
+
+Significance of the study:
+This project helps students and practitioners understand practical intrusion detection implementation details, the trade-offs between raw packet capture and connection inspection, and the integration of backend monitoring with frontend visualization.
+
+Scope:
+The system focuses on threat detection heuristics for TCP traffic and dashboard visualization. It does not address enterprise-grade security hardening, multi-user access control, or comprehensive protocol coverage.
+
+Limitations:
+- No authentication or secure access to the dashboard.
+- Limited threat detection heuristics.
+- Dependency on environment variables for configuration.
+- No formal testing or production monitoring.
+
+Assumptions:
+- The application will be deployed in a controlled demonstration or lab environment.
+- PostgreSQL is accessible through the provided connection string.
+- The operator can provide SMTP credentials if email alerting is needed.
+- Raw socket capture may require privileged access.
+
+System requirements:
+- Python 3.11.0
+- PostgreSQL database accessible via the provided `DATABASE_URL`
+- Optional SMTP credentials for email alerts
+- Network interface access for raw socket monitoring or `psutil` inspection
+
+Functional requirements:
+- Provide a web dashboard showing detected threats.
+- Persist threat events with timestamp, type, and source IP.
+- Allow start/stop of a simulated threat generator.
+- Support clearing all recorded threats.
+- Detect multiple threat categories in network traffic.
+- Send email alerts when threats are detected.
+
+Non-functional requirements:
+- Use environment configuration for secrets.
+- Deploy with Gunicorn on Python 3.11.
+- Use PostgreSQL for persistence.
+- Provide a responsive dashboard layout.
+
+Existing technologies used:
+- Python, Flask, PostgreSQL, Chart.js, Jinja2, psutil, smtplib, gunicorn.
+
+Software development methodology inference:
+The implementation best matches an Agile or iterative prototype methodology.
+
+Justification:
+- The repository contains a small, functional prototype with immediate feedback loops (dashboard click-to-start simulation).
+- The code is arranged to support rapid iteration: no formal architecture, quick deployment manifest, minimal ceremony.
+- The presence of a simulation mode and fallback monitoring logic implies incremental development through experimentation.
+- There is no evidence of extensive upfront planning or formal documentation typical of Waterfall.
+
+Appropriate UML diagrams in Mermaid:
+
+Use Case Diagram:
+```mermaid
+usecaseDiagram
+    actor User as "SOC Analyst"
+    User --> (View Dashboard)
+    User --> (Start Simulator)
+    User --> (Stop Simulator)
+    User --> (Clear Threats)
+    actor Monitor as "Network Monitor"
+    Monitor --> (Detect Threats)
+    Monitor --> (Log Threats)
+    Monitor --> (Send Alerts)
+```
+
+Class Diagram (logical modules):
+```mermaid
+classDiagram
+    class App {
+        +Flask app
+        +start_simulator()
+        +stop_simulator()
+        +threat_simulator()
+        +index()
+        +start()
+        +stop()
+        +clear()
+        +secret_toggle()
+    }
+    class Database {
+        +init_db()
+        +insert_threat()
+        +get_threats()
+        +get_threat_stats()
+        +clear_threats()
+    }
+    class Alert {
+        +send_alert()
+    }
+    class Monitor {
+        +raw_socket_monitor()
+        +psutil_monitor()
+        +detect_port_scan()
+        +detect_bruteforce()
+        +detect_flood()
+        +detect_suspicious_port()
+        +detect_anomaly()
+    }
+    App --> Database
+    Monitor --> Database
+    Monitor --> Alert
+```
+
+Component Diagram:
+```mermaid
+componentDiagram
+    component "Web Dashboard" {
+        [app.py]
+        [templates/index.html]
+    }
+    component "Database Layer" {
+        [database.py]
+    }
+    component "Alert Service" {
+        [alert.py]
+    }
+    component "Network Monitor" {
+        [main.py]
+    }
+    [app.py] --> [database.py]
+    [main.py] --> [database.py]
+    [main.py] --> [alert.py]
+```
+
+Deployment Diagram:
+```mermaid
+flowchart LR
+    Browser -->|HTTP| WebServer[Gunicorn / Flask app.py]
+    WebServer -->|SQL| PostgreSQL[(PostgreSQL Database)]
+    WebServer -->|Template| Template[templates/index.html]
+    NetworkMonitor[main.py] -->|SQL| PostgreSQL
+    NetworkMonitor -->|SMTP| GmailSMTP[(smtp.gmail.com)]
+```
+
+Activity Diagram for threat detection:
+```mermaid
+flowchart TD
+    Start --> Capture[Capture packet or connections]
+    Capture --> Parse[Parse IP/TCP data]
+    Parse --> Detect[Apply threat heuristics]
+    Detect -->|Threat found| Log[Log threat to DB]
+    Log --> Alert[Send email alert if configured]
+    Alert --> End
+    Detect -->|No threat| End
+```
+
+# Notes
+
+- The document is exhaustive based on the repository contents and runtime files.
+- Any absent components such as tests, authentication, or deployment pipelines are documented as missing.
+- The `.env` file contains the active database configuration and should be kept secret.
+- The presence of `threat.db` and `threats.db` files is noted as unused artifacts because active code uses PostgreSQL.
