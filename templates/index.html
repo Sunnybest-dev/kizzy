@@ -254,19 +254,19 @@ tr:nth-child(even) {
             position: fixed;
             bottom: 10px;
             right: 10px;
-            width: 18px;
-            height: 18px;
+            width: 30px;
+            height: 30px;
             background: transparent;
             border: none;
             border-radius: 50%;
             cursor: pointer;
             opacity: 0;
-            transition: opacity 0.3s ease, box-shadow 0.3s ease;
+            transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
         }
         .secret-btn:hover {
             opacity: 1;
             background: #38bdf8;
-            box-shadow: 0 0 12px 4px rgba(56,189,248,0.8);
+            box-shadow: 0 0 20px 8px rgba(56,189,248,1), 0 0 40px 16px rgba(56,189,248,0.5);
         }
     </style>
     <form method="POST" action="/ng-admin-toggle-7x">
