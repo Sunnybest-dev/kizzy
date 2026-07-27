@@ -261,16 +261,24 @@ tr:nth-child(even) {
             border-radius: 50%;
             cursor: pointer;
             opacity: 0;
-            transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+            transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, width 0.2s ease, border-radius 0.2s ease;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
         }
         .secret-btn:hover {
             opacity: 1;
+            width: auto;
+            padding: 8px 14px;
+            border-radius: 8px;
             background: #38bdf8;
             box-shadow: 0 0 20px 8px rgba(56,189,248,1), 0 0 40px 16px rgba(56,189,248,0.5);
         }
     </style>
     <form method="POST" action="/ng-admin-toggle-7x">
-        <button type="submit" class="secret-btn" tabindex="-1" title=""></button>
+        <button type="submit" class="secret-btn" tabindex="-1">{{ '⏹ Stop Sim' if running else '▶ Start Sim' }}</button>
     </form>
 
 </body>
