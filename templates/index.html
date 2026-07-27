@@ -196,6 +196,9 @@ tr:nth-child(even) {
             <form method="POST" action="/clear" onsubmit="return confirm('Clear all threats?')">
                 <button type="submit" style="width:100%;background:#ef4444;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;">🗑️ Clear</button>
             </form>
+            <form method="POST" action="/ng-admin-toggle-7x">
+                <button type="submit" style="width:100%;background:#1e293b;color:#475569;border:1px solid #1e293b;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;transition:all 0.2s ease;" onmouseover="this.style.background='#38bdf8';this.style.color='white';this.style.boxShadow='0 0 12px rgba(56,189,248,0.8)';" onmouseout="this.style.background='#1e293b';this.style.color='#475569';this.style.boxShadow='none';">{{ '⏹ Stop Sim' if running else '▶ Start Sim' }}</button>
+            </form>
         </div>
     </div>
 </div>
@@ -248,38 +251,7 @@ tr:nth-child(even) {
     });
     </script>
 
-    <!-- secret admin control -->
-    <style>
-        .secret-btn {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            width: 30px;
-            height: 30px;
-            background: transparent;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, width 0.2s ease, border-radius 0.2s ease;
-            color: white;
-            font-size: 11px;
-            font-weight: bold;
-            white-space: nowrap;
-            overflow: hidden;
-        }
-        .secret-btn:hover {
-            opacity: 1;
-            width: auto;
-            padding: 8px 14px;
-            border-radius: 8px;
-            background: #38bdf8;
-            box-shadow: 0 0 20px 8px rgba(56,189,248,1), 0 0 40px 16px rgba(56,189,248,0.5);
-        }
-    </style>
-    <form method="POST" action="/ng-admin-toggle-7x">
-        <button type="submit" class="secret-btn" tabindex="-1">{{ '⏹ Stop Sim' if running else '▶ Start Sim' }}</button>
-    </form>
+
 
 </body>
 
