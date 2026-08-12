@@ -27,7 +27,6 @@ login_attempts = {}
 traffic_count = {}
 connection_tracker = {}
 packet_sizes = {}
-seen_connections = set()
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
 def log_threat(threat_type, ip):
@@ -179,9 +178,9 @@ def psutil_monitor():
                     log_threat("Port Scan", ip)
 
             # Rapid connections
-            all_ips = [c.raddr.ip for c in connections if c.raddr]
-            for ip in set(all_ips):
-                count = all_ips.count(ip)
+            from collections import Counter
+            ip_counts = Counter(c.raddr.ip for c in connections if c.raddr)
+            for ip, count in ip_counts.items():
                 if count > 10 and cooldown_ok(ip):
                     log_threat("Rapid Traffic", ip)
 

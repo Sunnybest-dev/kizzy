@@ -59,4 +59,3 @@ def clear_threats():
     conn.commit()
     conn.close()
 
-init_db()
